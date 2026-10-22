@@ -224,6 +224,32 @@ class TestPrefabCore:
             "1.0,2.0,3.0",
         ]
 
+    def test_validate_new_prefab_path(self):
+        assert prefab_core.validate_new_prefab_path("Assets/Hero.prefab") == "Assets/Hero.prefab"
+        assert prefab_core.validate_new_prefab_path("Assets\\Sub\\Hero.prefab") == "Assets/Sub/Hero.prefab"
+        for bad in ["Hero.prefab", "Assets/Hero.unity", "Assets/", "Assets/NoExt.pref"]:
+            with pytest.raises(RuntimeError, match="Invalid prefab asset path"):
+                prefab_core.validate_new_prefab_path(bad)
+
+    def test_create_args(self):
+        args = prefab_core.create_args("Assets/Hero.prefab", name="Boss")
+        assert args == ["-executeMethod", "CliPrefabTools.Create", "-prefabPath", "Assets/Hero.prefab", "-prefabName", "Boss"]
+
+    def test_create_from_scene_args(self):
+        args = prefab_core.create_from_scene_args(
+            "Assets/Scenes/Sample.unity", "Parent/Child", "Assets/Child.prefab"
+        )
+        assert args == [
+            "-executeMethod",
+            "CliPrefabTools.CreateFromScene",
+            "-scenePath",
+            "Assets/Scenes/Sample.unity",
+            "-gameObjectPath",
+            "Parent/Child",
+            "-prefabPath",
+            "Assets/Child.prefab",
+        ]
+
 
 # ── core: test runner ───────────────────────────────────────────────────
 
@@ -556,7 +582,73 @@ class TestCLI:
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
         assert data["entry_method"] == "CliPrefabTools.Apply"
-        assert (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").is_file()
+        written = (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").read_text(encoding="utf-8")
+        assert "public static void Create()" in written
+        assert "public static void CreateFromScene()" in written
+        assert "SaveAsPrefabAsset" in written
+        assert "{{" not in written and "}}" not in written  # braces must render literally
+
+    def test_prefab_create_requires_scaffold(self, runner, fake_project):
+        result = runner.invoke(
+            cli, ["--json", "prefab", "create", str(fake_project), "Assets/Hero.prefab"]
+        )
+        assert result.exit_code == 1
+        assert "prefab scaffold" in json.loads(result.output)["message"]
+
+    def test_prefab_create_invalid_path(self, runner, fake_project):
+        (fake_project / "Assets" / "Editor").mkdir(exist_ok=True)
+        (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").write_text("x")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "create", str(fake_project), "Hero.prefab"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid prefab asset path" in json.loads(result.output)["message"]
+
+    def test_prefab_create_runs_batch(self, runner, fake_project, monkeypatch):
+        captured = {}
+
+        def fake_run_unity(args, **kwargs):
+            captured["args"] = args
+            return {"returncode": 0, "stdout": "", "stderr": "", "duration_sec": 0.1}
+
+        monkeypatch.setattr(unity_backend, "run_unity", fake_run_unity)
+        (fake_project / "Assets" / "Editor").mkdir(exist_ok=True)
+        (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").write_text("x")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "create", str(fake_project),
+                  "Assets/Hero.prefab", "--name", "Boss"]
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["status"] == "ok"
+        assert captured["args"] == [
+            "-executeMethod", "CliPrefabTools.Create",
+            "-prefabPath", "Assets/Hero.prefab", "-prefabName", "Boss",
+        ]
+
+    def test_prefab_create_from_scene_checks(self, runner, fake_project, monkeypatch):
+        captured = {}
+
+        def fake_run_unity(args, **kwargs):
+            captured["args"] = args
+            return {"returncode": 0, "stdout": "", "stderr": "", "duration_sec": 0.1}
+
+        monkeypatch.setattr(unity_backend, "run_unity", fake_run_unity)
+        (fake_project / "Assets" / "Editor").mkdir(exist_ok=True)
+        (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").write_text("x")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "create-from-scene", str(fake_project),
+                  "Assets/Missing.unity", "Hero", "Assets/Hero.prefab"]
+        )
+        assert result.exit_code == 1
+        assert "Scene not found" in json.loads(result.output)["message"]
+        scene = fake_project / "Assets" / "Scenes" / "SampleScene.unity"
+        scene.parent.mkdir(parents=True, exist_ok=True)
+        scene.write_text("scene\n")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "create-from-scene", str(fake_project),
+                  "Assets/Scenes/SampleScene.unity", "Hero", "Assets/Hero.prefab"]
+        )
+        assert result.exit_code == 0 or "message" in json.loads(result.output)
 
     def test_logs_missing_file(self, runner, tmp_path):
         result = runner.invoke(

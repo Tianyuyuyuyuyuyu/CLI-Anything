@@ -17,7 +17,9 @@ Unity 2019.4+; developed and tested against 2021.3.8f1 on Windows.
 | `project export <project> <out> <assets...>` | `Unity -batchmode -quit -projectPath <dir> -exportPackage <assets...> <out> -logFile -` |
 | `prefab list` | `rglob("*.prefab")` over Assets/ (pure file I/O) |
 | `prefab info` | Regex parse of the serialized prefab YAML (docs, components, script GUIDs, nested prefab strips) |
-| `prefab scaffold` | Writes `Assets/Editor/CliPrefabTools.cs` (`PrefabUtility.LoadPrefabContents`/`SaveAsPrefabAsset` entry point) |
+| `prefab scaffold` | Writes `Assets/Editor/CliPrefabTools.cs` (`PrefabUtility` entry points: Apply / Create / CreateFromScene) |
+| `prefab create <project> <asset>` | `Unity -batchmode -quit -nographics -projectPath <dir> -executeMethod CliPrefabTools.Create -prefabPath <Assets/...> [-prefabName <name>] -logFile -` |
+| `prefab create-from-scene <project> <scene> <objPath> <asset>` | `-executeMethod CliPrefabTools.CreateFromScene -scenePath <scene> -gameObjectPath <path> -prefabPath <asset>` (opens the scene, `GameObject.Find`, `SaveAsPrefabAsset`, saves scene) |
 | `prefab edit <project> <asset>` | `Unity -batchmode -quit -nographics -projectPath <dir> -executeMethod CliPrefabTools.Apply -prefabPath ... [-prefabRename/-prefabSetActive/-prefabPosition] -logFile -` |
 | `execute <project> <Method>` | `Unity -batchmode -quit -nographics -projectPath <dir> -executeMethod <Method> -logFile -` |
 | `test <project>` | `Unity -batchmode -projectPath <dir> -runTests -testPlatform <Mode> -testResults <xml> [-testFilter/-testCategory/-runSynchronously]`; parses NUnit3 XML |

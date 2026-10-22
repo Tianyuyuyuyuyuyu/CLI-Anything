@@ -66,13 +66,23 @@ cli-anything-unity execute ./MyProject CliBuild.Perform --log-file build.log
 cli-anything-unity prefab list ./MyProject                       # all *.prefab assets
 cli-anything-unity prefab info ./MyProject Assets/Prefabs/Hero.prefab
 cli-anything-unity prefab scaffold ./MyProject                   # write Assets/Editor/CliPrefabTools.cs
+
+# create an empty prefab (root named after the asset unless --name given)
+cli-anything-unity prefab create ./MyProject Assets/Prefabs/Hero.prefab --name Hero
+
+# save an existing scene GameObject (hierarchy path) as a prefab
+cli-anything-unity prefab create-from-scene ./MyProject \
+    Assets/Scenes/SampleScene.unity "Parent/Child" Assets/Prefabs/Child.prefab
+
+# edit an existing prefab
 cli-anything-unity prefab edit ./MyProject Assets/Prefabs/Hero.prefab \
     --rename Boss --set-active false --position 1,2,3
 ```
 
 `prefab info` parses the serialized YAML directly (fast, no editor launch).
-`prefab edit` runs the real editor via `PrefabUtility.LoadPrefabContents` /
-`SaveAsPrefabAsset` (requires `prefab scaffold` once).
+`prefab create` / `create-from-scene` / `edit` run the real editor via
+`PrefabUtility` (requires `prefab scaffold` once; re-run scaffold with
+`--force` after upgrading the CLI to get new entry methods).
 
 ### Testing
 

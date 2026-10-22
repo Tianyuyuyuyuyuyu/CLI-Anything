@@ -338,6 +338,70 @@ def prefab_scaffold(ctx, path: str, force: bool):
     _out(ctx, data)
 
 
+def _run_prefab_method(ctx, path: str, args: list[str], timeout: int, action: str):
+    """Shared runner for prefab batch methods (requires CliPrefabTools.cs)."""
+    if not project_core.is_project(path):
+        raise RuntimeError(f"Not a Unity project: {path}")
+    if not (Path(path) / "Assets" / "Editor" / "CliPrefabTools.cs").is_file():
+        raise RuntimeError(
+            "CliPrefabTools.cs not found. Run 'prefab scaffold' first."
+        )
+    result = unity_backend.run_unity(args, project_path=path, timeout=timeout, log_file="-")
+    data = {
+        "status": "ok" if result["returncode"] == 0 else "error",
+        "action": action,
+        "returncode": result["returncode"],
+        "duration_sec": result["duration_sec"],
+    }
+    if data["status"] == "error":
+        data["message"] = _summarize_unity_failure(result)
+    _out(ctx, data)
+    if data["status"] == "error" and not ctx.obj.get("repl"):
+        sys.exit(1)
+
+
+@prefab.command("create")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.argument("asset_path")
+@click.option("--name", default=None, help="Root GameObject name (default: asset file name).")
+@click.option("--timeout", default=unity_backend.DEFAULT_TIMEOUT, show_default=True)
+@click.pass_context
+@_handle_error
+def prefab_create(ctx, path: str, asset_path: str, name: str | None, timeout: int):
+    """Create an empty prefab at 'Assets/<Name>.prefab'."""
+    asset_path = prefab_core.validate_new_prefab_path(asset_path)
+    _run_prefab_method(
+        ctx, path, prefab_core.create_args(asset_path, name), timeout, "prefab create"
+    )
+
+
+@prefab.command("create-from-scene")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.argument("scene_path")
+@click.argument("object_path")
+@click.argument("asset_path")
+@click.option("--timeout", default=unity_backend.DEFAULT_TIMEOUT, show_default=True)
+@click.pass_context
+@_handle_error
+def prefab_create_from_scene(ctx, path: str, scene_path: str, object_path: str, asset_path: str, timeout: int):
+    """Save a scene GameObject (hierarchy path like 'Parent/Child') as a prefab."""
+    scene_path = scene_path.replace("\\", "/")
+    if not scene_path.startswith("Assets/") or not scene_path.endswith(".unity"):
+        raise RuntimeError(f"Invalid scene path '{scene_path}'. Expected 'Assets/<Scene>.unity'.")
+    if not (Path(path) / scene_path).is_file():
+        raise RuntimeError(f"Scene not found: {scene_path} (under {path})")
+    asset_path = prefab_core.validate_new_prefab_path(asset_path)
+    if (Path(path) / asset_path).is_file():
+        raise RuntimeError(f"Prefab already exists: {asset_path}. Choose another path.")
+    _run_prefab_method(
+        ctx,
+        path,
+        prefab_core.create_from_scene_args(scene_path, object_path, asset_path),
+        timeout,
+        "prefab create-from-scene",
+    )
+
+
 @prefab.command("edit")
 @click.argument("path", type=click.Path(exists=True, file_okay=False))
 @click.argument("asset_path")

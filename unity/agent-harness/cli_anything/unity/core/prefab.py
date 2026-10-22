@@ -109,3 +109,35 @@ def edit_args(
     if position:
         args.extend(["-prefabPosition", ",".join(str(v) for v in position)])
     return args
+
+
+def validate_new_prefab_path(asset_path: str) -> str:
+    """Require 'Assets/....prefab' targets for new prefab creation."""
+    p = (asset_path or "").replace("\\", "/")
+    if not p.startswith("Assets/") or not p.endswith(".prefab") or len(p) <= len("Assets/.prefab"):
+        raise RuntimeError(
+            f"Invalid prefab asset path '{asset_path}'. Expected 'Assets/<Name>.prefab'."
+        )
+    return p
+
+
+def create_args(asset_path: str, name: str | None = None) -> list[str]:
+    """Arguments for ``-executeMethod CliPrefabTools.Create`` (empty prefab)."""
+    args = ["-executeMethod", "CliPrefabTools.Create", "-prefabPath", asset_path]
+    if name:
+        args.extend(["-prefabName", name])
+    return args
+
+
+def create_from_scene_args(scene_path: str, object_path: str, asset_path: str) -> list[str]:
+    """Arguments for ``-executeMethod CliPrefabTools.CreateFromScene``."""
+    return [
+        "-executeMethod",
+        "CliPrefabTools.CreateFromScene",
+        "-scenePath",
+        scene_path,
+        "-gameObjectPath",
+        object_path,
+        "-prefabPath",
+        asset_path,
+    ]
