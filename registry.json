@@ -883,6 +883,20 @@
       ]
     },
     {
+      "name": "unity",
+      "display_name": "Unity Editor",
+      "version": "1.0.0",
+      "description": "Agent-native Unity Editor harness: project creation/inspection, batch-mode editor script execution, Unity Test Framework runs, player builds, and log inspection",
+      "requires": "Unity Editor 2019.4+ (unity.com), activated license; UNITY_BIN env var or Hub install",
+      "homepage": "https://unity.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity/agent-harness",
+      "entry_point": "cli-anything-unity",
+      "skill_md": "skills/cli-anything-unity/SKILL.md",
+      "category": "gamedev",
+      "contributors": []
+    },
+    {
       "name": "unrealinsights",
       "display_name": "Unreal Insights",
       "version": "0.1.0",

@@ -1531,6 +1531,7 @@ cli-anything/
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
 ├── 🦙 ollama/agent-harness/             # Ollama CLI (98 tests)
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
+├── 🎲 unity/agent-harness/              # Unity Editor CLI (43 unit tests)
 ├── 📦 sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
