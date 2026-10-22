@@ -12,7 +12,7 @@ from pathlib import Path
 import click
 
 from .core import build as build_core
-from .core import editor_script, project as project_core, test_runner
+from .core import editor_script, prefab as prefab_core, project as project_core, test_runner
 from .utils import unity_backend
 
 LOCALAPPDATA = os.environ.get("LOCALAPPDATA", "")
@@ -286,6 +286,104 @@ def project_export(ctx, path: str, output: str, asset_paths: tuple[str, ...], ti
         "action": "project export",
         "output": str(out.resolve()),
         "assets": list(asset_paths),
+        "returncode": result["returncode"],
+        "duration_sec": result["duration_sec"],
+    }
+    if data["status"] == "error":
+        data["message"] = _summarize_unity_failure(result)
+    _out(ctx, data)
+    if data["status"] == "error" and not ctx.obj.get("repl"):
+        sys.exit(1)
+
+
+# ── Prefab ──────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def prefab():
+    """Inspect and edit prefabs (reads are direct; edits go through the editor)."""
+
+
+@prefab.command("list")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.pass_context
+@_handle_error
+def prefab_list(ctx, path: str):
+    """List all *.prefab assets in the project."""
+    _out(ctx, {"status": "ok", "action": "prefab list", "prefabs": prefab_core.list_prefabs(path)})
+
+
+@prefab.command("info")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.argument("asset_path")
+@click.pass_context
+@_handle_error
+def prefab_info(ctx, path: str, asset_path: str):
+    """Summarize a prefab: root name, GameObjects, components, script GUIDs."""
+    data = prefab_core.parse_prefab_summary(prefab_core.resolve_prefab(path, asset_path))
+    data["action"] = "prefab info"
+    _out(ctx, data)
+
+
+@prefab.command("scaffold")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.option("--force", is_flag=True, help="Overwrite an existing CliPrefabTools.cs.")
+@click.pass_context
+@_handle_error
+def prefab_scaffold(ctx, path: str, force: bool):
+    """Write Assets/Editor/CliPrefabTools.cs (PrefabUtility edit entry point)."""
+    data = editor_script.scaffold_prefab_tools(path, force=force)
+    data["status"] = "ok"
+    data["action"] = "prefab scaffold"
+    _out(ctx, data)
+
+
+@prefab.command("edit")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.argument("asset_path")
+@click.option("--rename", default=None, help="Rename the prefab root GameObject.")
+@click.option("--set-active", "set_active", type=click.Choice(["true", "false"]), default=None)
+@click.option("--position", default=None, help="Root transform position as 'x,y,z'.")
+@click.option("--timeout", default=unity_backend.DEFAULT_TIMEOUT, show_default=True)
+@click.pass_context
+@_handle_error
+def prefab_edit(ctx, path: str, asset_path: str, rename: str | None,
+                set_active: str | None, position: str | None, timeout: int):
+    """Edit a prefab via PrefabUtility (requires 'prefab scaffold' first)."""
+    if not project_core.is_project(path):
+        raise RuntimeError(f"Not a Unity project: {path}")
+    prefab_core.resolve_prefab(path, asset_path)
+    if not (Path(path) / "Assets" / "Editor" / "CliPrefabTools.cs").is_file():
+        raise RuntimeError(
+            "CliPrefabTools.cs not found. Run 'prefab scaffold' first."
+        )
+    pos = None
+    if position:
+        try:
+            parts = [float(v) for v in position.split(",")]
+        except ValueError:
+            raise RuntimeError(f"Invalid --position '{position}'. Expected 'x,y,z'.")
+        if len(parts) != 3:
+            raise RuntimeError(f"Invalid --position '{position}'. Expected 'x,y,z'.")
+        pos = tuple(parts)
+    active = None if set_active is None else set_active == "true"
+    if rename is None and active is None and pos is None:
+        raise RuntimeError("Nothing to do: pass --rename, --set-active, and/or --position.")
+    result = unity_backend.run_unity(
+        prefab_core.edit_args(
+            asset_path,
+            rename=rename,
+            set_active=active,
+            position=pos,
+        ),
+        project_path=path,
+        timeout=timeout,
+        log_file="-",
+    )
+    data = {
+        "status": "ok" if result["returncode"] == 0 else "error",
+        "action": "prefab edit",
+        "asset_path": asset_path,
         "returncode": result["returncode"],
         "duration_sec": result["duration_sec"],
     }

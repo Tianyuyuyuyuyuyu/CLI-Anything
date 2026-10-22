@@ -60,6 +60,20 @@ cli-anything-unity execute ./MyProject MyApp.Editor.MyTool.Run
 cli-anything-unity execute ./MyProject CliBuild.Perform --log-file build.log
 ```
 
+### Prefabs
+
+```bash
+cli-anything-unity prefab list ./MyProject                       # all *.prefab assets
+cli-anything-unity prefab info ./MyProject Assets/Prefabs/Hero.prefab
+cli-anything-unity prefab scaffold ./MyProject                   # write Assets/Editor/CliPrefabTools.cs
+cli-anything-unity prefab edit ./MyProject Assets/Prefabs/Hero.prefab \
+    --rename Boss --set-active false --position 1,2,3
+```
+
+`prefab info` parses the serialized YAML directly (fast, no editor launch).
+`prefab edit` runs the real editor via `PrefabUtility.LoadPrefabContents` /
+`SaveAsPrefabAsset` (requires `prefab scaffold` once).
+
 ### Testing
 
 ```bash

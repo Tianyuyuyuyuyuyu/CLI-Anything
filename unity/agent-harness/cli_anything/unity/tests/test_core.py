@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli_anything.unity.core import build as build_core
-from cli_anything.unity.core import editor_script, project as project_core, test_runner
+from cli_anything.unity.core import editor_script, prefab as prefab_core, project as project_core, test_runner
 from cli_anything.unity.unity_cli import cli
 from cli_anything.unity.utils import unity_backend
 
@@ -138,6 +138,91 @@ class TestEditorScript:
     def test_scaffold_rejects_non_project(self, tmp_path):
         with pytest.raises(RuntimeError, match="Not a Unity project"):
             editor_script.scaffold_build_script(tmp_path)
+
+
+PREFAB_YAML = """\
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1234567890
+GameObject:
+  m_ObjectHideFlags: 0
+  m_Name: Hero
+  m_IsActive: 1
+--- !u!4 &1234567891
+Transform:
+  m_GameObject: {fileID: 1234567890}
+--- !u!114 &1234567892
+MonoBehaviour:
+  m_GameObject: {fileID: 1234567890}
+  m_Script: {fileID: 11500000, guid: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+--- !u!65 &1234567893
+BoxCollider:
+  m_GameObject: {fileID: 1234567890}
+--- !u!1001 &1234567894
+PrefabInstance:
+  m_SourcePrefab: {fileID: 100100000, guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}
+"""
+
+
+# ── core: prefab ────────────────────────────────────────────────────────
+
+
+class TestPrefabCore:
+    @pytest.fixture()
+    def prefab_project(self, fake_project):
+        prefab_dir = fake_project / "Assets" / "Prefabs"
+        prefab_dir.mkdir(parents=True, exist_ok=True)
+        (prefab_dir / "Hero.prefab").write_text(PREFAB_YAML)
+        (prefab_dir / "Item.prefab").write_text(PREFAB_YAML.replace("Hero", "Item"))
+        return fake_project
+
+    def test_list_prefabs(self, prefab_project):
+        prefabs = prefab_core.list_prefabs(prefab_project)
+        assert prefabs == ["Assets/Prefabs/Hero.prefab", "Assets/Prefabs/Item.prefab"]
+
+    def test_list_prefabs_rejects_non_project(self, tmp_path):
+        with pytest.raises(RuntimeError, match="Not a Unity project"):
+            prefab_core.list_prefabs(tmp_path)
+
+    def test_parse_prefab_summary(self, prefab_project):
+        data = prefab_core.parse_prefab_summary(prefab_project / "Assets" / "Prefabs" / "Hero.prefab")
+        assert data["status"] == "ok"
+        assert data["root_name"] == "Hero"
+        assert data["gameobject_count"] == 1
+        assert data["components"]["Transform"] == 1
+        assert data["components"]["BoxCollider"] == 1
+        assert data["mono_script_guids"] == ["a" * 32]
+        assert data["nested_prefab_guids"] == ["b" * 32]
+
+    def test_parse_missing_prefab(self, tmp_path):
+        with pytest.raises(RuntimeError, match="not found"):
+            prefab_core.parse_prefab_summary(tmp_path / "nope.prefab")
+
+    def test_resolve_prefab(self, prefab_project):
+        resolved = prefab_core.resolve_prefab(prefab_project, "Assets/Prefabs/Hero.prefab")
+        assert resolved.name == "Hero.prefab"
+        with pytest.raises(RuntimeError, match="Prefab not found"):
+            prefab_core.resolve_prefab(prefab_project, "Assets/Prefabs/Missing.prefab")
+
+    def test_edit_args(self):
+        args = prefab_core.edit_args(
+            "Assets/Prefabs/Hero.prefab",
+            rename="Boss",
+            set_active=False,
+            position=(1.0, 2.0, 3.0),
+        )
+        assert args == [
+            "-executeMethod",
+            "CliPrefabTools.Apply",
+            "-prefabPath",
+            "Assets/Prefabs/Hero.prefab",
+            "-prefabRename",
+            "Boss",
+            "-prefabSetActive",
+            "false",
+            "-prefabPosition",
+            "1.0,2.0,3.0",
+        ]
 
 
 # ── core: test runner ───────────────────────────────────────────────────
@@ -414,6 +499,64 @@ class TestCLI:
         )
         assert result.exit_code == 1
         assert "Invalid build target" in json.loads(result.output)["message"]
+
+    def test_prefab_list_and_info(self, runner, fake_project):
+        prefab_dir = fake_project / "Assets" / "Prefabs"
+        prefab_dir.mkdir(parents=True)
+        (prefab_dir / "Hero.prefab").write_text(PREFAB_YAML)
+        result = runner.invoke(cli, ["--json", "prefab", "list", str(fake_project)])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["prefabs"] == ["Assets/Prefabs/Hero.prefab"]
+        result = runner.invoke(
+            cli, ["--json", "prefab", "info", str(fake_project), "Assets/Prefabs/Hero.prefab"]
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["root_name"] == "Hero"
+        assert data["gameobject_count"] == 1
+
+    def test_prefab_edit_requires_scaffold(self, runner, fake_project):
+        prefab_dir = fake_project / "Assets" / "Prefabs"
+        prefab_dir.mkdir(parents=True)
+        (prefab_dir / "Hero.prefab").write_text(PREFAB_YAML)
+        result = runner.invoke(
+            cli, ["--json", "prefab", "edit", str(fake_project),
+                  "Assets/Prefabs/Hero.prefab", "--rename", "Boss"]
+        )
+        assert result.exit_code == 1
+        assert "prefab scaffold" in json.loads(result.output)["message"]
+
+    def test_prefab_edit_requires_ops(self, runner, fake_project):
+        prefab_dir = fake_project / "Assets" / "Prefabs"
+        prefab_dir.mkdir(parents=True)
+        (prefab_dir / "Hero.prefab").write_text(PREFAB_YAML)
+        (fake_project / "Assets" / "Editor").mkdir(exist_ok=True)
+        (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").write_text("x")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "edit", str(fake_project), "Assets/Prefabs/Hero.prefab"]
+        )
+        assert result.exit_code == 1
+        assert "Nothing to do" in json.loads(result.output)["message"]
+
+    def test_prefab_edit_invalid_position(self, runner, fake_project):
+        prefab_dir = fake_project / "Assets" / "Prefabs"
+        prefab_dir.mkdir(parents=True)
+        (prefab_dir / "Hero.prefab").write_text(PREFAB_YAML)
+        (fake_project / "Assets" / "Editor").mkdir(exist_ok=True)
+        (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").write_text("x")
+        result = runner.invoke(
+            cli, ["--json", "prefab", "edit", str(fake_project),
+                  "Assets/Prefabs/Hero.prefab", "--position", "1,2"]
+        )
+        assert result.exit_code == 1
+        assert "Expected 'x,y,z'" in json.loads(result.output)["message"]
+
+    def test_prefab_scaffold_json(self, runner, fake_project):
+        result = runner.invoke(cli, ["--json", "prefab", "scaffold", str(fake_project)])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["entry_method"] == "CliPrefabTools.Apply"
+        assert (fake_project / "Assets" / "Editor" / "CliPrefabTools.cs").is_file()
 
     def test_logs_missing_file(self, runner, tmp_path):
         result = runner.invoke(

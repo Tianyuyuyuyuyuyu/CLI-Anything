@@ -15,6 +15,10 @@ Unity 2019.4+; developed and tested against 2021.3.8f1 on Windows.
 | `project scaffold` | Writes `Assets/Editor/CliBuild.cs` (standard `BuildPipeline.BuildPlayer` entry point) |
 | `project import <project> <pkg>` | `Unity -batchmode -quit -projectPath <dir> -importPackage <pkg> -logFile -` |
 | `project export <project> <out> <assets...>` | `Unity -batchmode -quit -projectPath <dir> -exportPackage <assets...> <out> -logFile -` |
+| `prefab list` | `rglob("*.prefab")` over Assets/ (pure file I/O) |
+| `prefab info` | Regex parse of the serialized prefab YAML (docs, components, script GUIDs, nested prefab strips) |
+| `prefab scaffold` | Writes `Assets/Editor/CliPrefabTools.cs` (`PrefabUtility.LoadPrefabContents`/`SaveAsPrefabAsset` entry point) |
+| `prefab edit <project> <asset>` | `Unity -batchmode -quit -nographics -projectPath <dir> -executeMethod CliPrefabTools.Apply -prefabPath ... [-prefabRename/-prefabSetActive/-prefabPosition] -logFile -` |
 | `execute <project> <Method>` | `Unity -batchmode -quit -nographics -projectPath <dir> -executeMethod <Method> -logFile -` |
 | `test <project>` | `Unity -batchmode -projectPath <dir> -runTests -testPlatform <Mode> -testResults <xml> [-testFilter/-testCategory/-runSynchronously]`; parses NUnit3 XML |
 | `build <project>` | `Unity -batchmode -quit -nographics -projectPath <dir> -buildTarget <T> -executeMethod CliBuild.Perform -cliBuildOutput <path>` |
